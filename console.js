@@ -27,7 +27,7 @@ const is = {
 
 function tryStringify(value, maxLen = 32) {
   try {
-    const str = JSON.stringify(value, ' ', 2);
+    const str = JSON.stringify(value, null, 2);
 
     const strippedStr = ((str.startsWith('{') && str.endsWith('}')) || (str.startsWith('[') && str.endsWith(']'))) ?
       str.slice(1, -1).trim() :
@@ -127,6 +127,7 @@ class EmbeddedConsole {
   }
   timeEnd(specifier) {
     const p = this.timers.get(specifier);
+    if (p === undefined) return this.warn(`Timer ${specifier} does not exist`);
     this.log(`${specifier}:`, `${performance.now() - p}ms`);
 
     this.timers.delete(specifier);
