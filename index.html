@@ -1,0 +1,52 @@
+<html>
+    <head>
+        <meta charset="utf-8" />
+
+        <!-- Include stylesheet -->
+        <link rel="stylesheet" href="console.css" />
+        <title>Embedded-Console</title>
+    </head>
+    <body>
+        <h3><a href="https://github.com/y21/embedded-console">embedded-console</a></h3>
+
+        <!-- Element that will be passed to EmbeddedConsole -->
+        <div id="console"></div>
+    </body>
+
+    <!-- Include JavaScript file -->
+    <script src="console.js"></script>
+    <script>
+        {
+            // Get element (<div id="console"></div>)
+            const element = document.getElementById('console');
+
+            // Create embedded console
+            const ec = new EmbeddedConsole(element, {
+                height: '100%'
+            });
+
+            // Some random tests
+            ec.time('Rendering logs');
+
+            ec.log('String', '<b>xss?</b>');
+            ec.log('Hello, %s. %d?', 'user');
+
+            ec.log('Number', 13, 15.6, BigInt(13));
+            ec.log('Nullish', undefined, null);
+            ec.log('Bool', true, false);
+            ec.log('Set/Map', new Set(), new Map());
+            ec.log('Array', [1, 2, 'test']);
+            ec.log('Circular object', window);
+            ec.log('Null prototype', Object.create(null));
+            ec.log('Proxied Error', new Proxy(Error.prototype, {}));
+            ec.warn('Warning: please read me.', 123);
+            ec.error('Error! Oops...', { message: 'nope' });
+
+            ec.assert(true, 'All good');
+
+            ec.assert(0 /* 0 = falsy */, 'Oops!', 12345)
+
+            ec.timeEnd('Rendering logs');
+        }
+    </script>
+</html>

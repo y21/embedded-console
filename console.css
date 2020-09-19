@@ -1,0 +1,45 @@
+.embedded-console {
+    background-color: rgb(36, 36, 36);
+    font-family: Consolas, Lucida Console, Courier New, monospace;
+    font-size: 12px;
+    color: white;
+    padding: 5px;
+    overflow-y: scroll;
+}
+
+.ec-entry {
+    margin-top: 3px;
+    padding: 3px 20px;
+}
+
+.ec-log {
+    border-bottom: 1px solid rgb(60, 60, 60);
+}
+
+.ec-warning {
+    border: 1px solid #650;
+    color: #ffdc9e;
+    background-color: #332b00;
+}
+
+.ec-error {
+    color: #ff8080;
+    background-color: #290000;
+    border: 1px solid #5b0000;
+}
+
+.ec-numeric {
+    color: rgb(153, 128, 255);
+}
+
+.ec-string {
+    color: inherit;
+}
+
+.ec-nullish {
+    color: rgb(127, 127, 127);
+}
+
+.ec-object {
+    font-style: italic;
+}
