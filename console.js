@@ -1,5 +1,8 @@
-const TAG_REGEX = /[<>]/g,
-  PLACEHOLDER_REGEX = /%[oOdisf]/g;
+const placeholders = new Set([
+  'o', 'O', 'd', 'i', 's', 'f'
+]);
+
+const NEWLINE_REGEX = /\n/g;
 
 const is = {
   nullish(value) {
@@ -22,6 +25,9 @@ const is = {
   },
   array(value) {
     return Array.isArray(value);
+  },
+  error(value) {
+    return value instanceof Error;
   }
 };
 
@@ -35,21 +41,41 @@ function tryStringify(value, maxLen = 32) {
 
     const substr = strippedStr.length > maxLen ? strippedStr.substr(0, 32) + '...' : strippedStr;
 
-    return substr;
+    return substr.replace(NEWLINE_REGEX, '');
   } catch {
     return '<circular>';
   }
 }
 
 function escapeHtml(value) {
-  return value.replace(TAG_REGEX, (match) => {
-    if (match === '<') return '&lt;';
-    else return '&gt;';
-  });
+  let result = '';
+  for (let i = 0; i < value.length; ++i) {
+    const char = value[i];
+
+    switch (char) {
+      case '<':
+        result += '&lt;';
+        break;
+      case '>':
+        result += '&gt;';
+        break;
+      case ' ':
+        result += '&nbsp;';
+        break;
+      case '\n':
+        result += '<br />';
+        break;
+      default:
+        result += char;
+        break;
+    }
+  }
+  return result;
 }
 
 function valueToClass(value) {
   if (is.nullish(value)) return 'ec-nullish';
+  else if (is.error(value)) return 'ec-string';
   else if (is.number(value) || is.bool(value)) return 'ec-numeric';
   else if (is.strictObject(value) || is.array(value)) return 'ec-object';
   else return 'ec-string';
@@ -57,6 +83,7 @@ function valueToClass(value) {
 
 function formatValue(value) {
   if (is.string(value)) return value;
+  else if (is.error(value)) return String(value);
   else if (is.strictObject(value)) return `${value?.constructor?.name ?? ''} { ${tryStringify(value)} }`;
   else if (is.array(value)) return `[ ${tryStringify(value)} ]`;
   else return String(value);
@@ -84,12 +111,17 @@ class EmbeddedConsole {
   _formatString(...data) {
     const [initial] = data;
     if (typeof initial === 'string') {
-      let idx = 0;
+      let idx = 0,
+        res = '';
 
+      for (let i = 0; i < initial.length; ++i) {
+        const char = initial[i];
+        if (placeholders.has(char) && initial[i - 1] === '%') res += data[++idx] ?? `%${char}`;
+        else if (char === '%') continue;
+        else res += char;
+      }
 
-      data[0] = initial.replace(PLACEHOLDER_REGEX, (match) => {
-        return data[++idx] ?? match;
-      });
+      data[0] = res;
       data.splice(1, idx);
     }
 

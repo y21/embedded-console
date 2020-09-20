@@ -16,7 +16,6 @@
     <!-- Include JavaScript file -->
     <script src="console.js"></script>
     <script>
-        {
             // Get element (<div id="console"></div>)
             const element = document.getElementById('console');
 
@@ -33,6 +32,7 @@
 
             ec.log('Number', 13, 15.6, BigInt(13));
             ec.log('Nullish', undefined, null);
+            ec.log(undefined);
             ec.log('Bool', true, false);
             ec.log('Set/Map', new Set(), new Map());
             ec.log('Array', [1, 2, 'test']);
@@ -40,13 +40,16 @@
             ec.log('Null prototype', Object.create(null));
             ec.log('Proxied Error', new Proxy(Error.prototype, {}));
             ec.warn('Warning: please read me.', 123);
-            ec.error('Error! Oops...', { message: 'nope' });
+            ec.error(new Error('help'));
+
+            ec.error(new Error('something went wrong').stack);
 
             ec.assert(true, 'All good');
 
             ec.assert(0 /* 0 = falsy */, 'Oops!', 12345)
 
             ec.timeEnd('Rendering logs');
-        }
+
+            ec.error(new ReferenceError('abc is not defined'));
     </script>
 </html>
