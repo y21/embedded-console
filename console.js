@@ -20,6 +20,9 @@ const is = {
   bigint(value) {
     return typeof value === 'bigint';
   },
+  fn(value) {
+    return typeof value === 'function';
+  },
   strictObject(value) {
     return !this.nullish(value) && typeof value === 'object' && !Array.isArray(value);
   },
@@ -28,6 +31,15 @@ const is = {
   },
   error(value) {
     return value instanceof Error;
+  },
+  regexp(value) {
+    return value instanceof RegExp;
+  },
+  set(value) {
+    return value instanceof Set;
+  },
+  map(value) {
+    return value instanceof Map;
   }
 };
 
@@ -77,15 +89,31 @@ function valueToClass(value) {
   if (is.nullish(value)) return 'ec-nullish';
   else if (is.error(value)) return 'ec-string';
   else if (is.number(value) || is.bool(value)) return 'ec-numeric';
-  else if (is.strictObject(value) || is.array(value)) return 'ec-object';
+  else if (is.regexp(value)) return 'ec-regexp';
+  else if (is.strictObject(value) || is.array(value) || is.fn(value)) return 'ec-object';
   else return 'ec-string';
 }
 
 function formatValue(value) {
-  if (is.string(value)) return value;
-  else if (is.error(value)) return String(value);
-  else if (is.strictObject(value)) return `${value?.constructor?.name ?? ''} { ${tryStringify(value)} }`;
-  else if (is.array(value)) return `[ ${tryStringify(value)} ]`;
+  if (is.string(value))
+    return value;
+
+  else if (is.error(value) || is.regexp(value))
+    return String(value);
+
+  else if (is.set(value))
+    return `Set(${value.size}) {${tryStringify(Array.from(value.keys()))}}`;
+
+  else if (is.map(value))
+    return `Map(${value.size}) {${Array.from(value.entries()).map(([k, v]) => 
+      `${k} => ${v}`).join(', ')}}`;
+
+  else if (is.strictObject(value))
+    return `${value?.constructor?.name ?? ''} { ${tryStringify(value)} }`;
+
+  else if (is.array(value))
+    return `(${value.length}) [ ${tryStringify(value)} ]`;
+
   else return String(value);
 }
 

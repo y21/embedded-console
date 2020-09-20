@@ -30,13 +30,16 @@
             ec.log('String', '<b>xss?</b>');
             ec.log('Hello, %s. %d?', 'user');
 
-            ec.log('Number', 13, 15.6, BigInt(13));
-            ec.log('Nullish', undefined, null);
-            ec.log(undefined);
-            ec.log('Bool', true, false);
-            ec.log('Set/Map', new Set(), new Map());
-            ec.log('Array', [1, 2, 'test']);
-            ec.log('Circular object', window);
+            ec.log(13, 15.6, BigInt(13));
+            ec.log(undefined, null);
+            ec.log(true, false);
+            ec.log(function() { return 1+1; });
+            ec.log(String.prototype.concat);
+            ec.log(new Set([1,2,3]));
+            ec.log(new Map([[1, 2], [3, 4]]));
+            ec.log([1, 2, 'test']);
+            ec.log(window);
+
             ec.log('Null prototype', Object.create(null));
             ec.log('Proxied Error', new Proxy(Error.prototype, {}));
             ec.warn('Warning: please read me.', 123);
@@ -46,10 +49,17 @@
 
             ec.assert(true, 'All good');
 
-            ec.assert(0 /* 0 = falsy */, 'Oops!', 12345)
-
-            ec.timeEnd('Rendering logs');
+            ec.assert(0 /* 0 = falsy */, 'Oops!', 12345);
 
             ec.error(new ReferenceError('abc is not defined'));
+
+            // Numbers
+
+            ec.log(0);
+            ec.log(Infinity, -Infinity);
+            ec.log(NaN);
+            ec.log(9.5e95);
+
+            ec.timeEnd('Rendering logs');
     </script>
 </html>

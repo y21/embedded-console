@@ -43,3 +43,7 @@
 .ec-object {
     font-style: italic;
 }
+
+.ec-regexp {
+    color: rgb(211, 123, 76);
+}
