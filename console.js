@@ -154,9 +154,20 @@ class EmbeddedConsole {
     }
 
     return data.map((param) => {
-      const value = formatValue(param);
+      let value;
+      try {
+        value = formatValue(param);
+      } catch {
+        // Don't do anything with error because it could throw another error
+        // i.e. accessing `e.message` could invoke a throwing getter
+
+        // Code like this will now return `<unknown>` rather than an unhandled error:
+        // .log(new Proxy({}, { get() { throw 1; } }));
+        value = '<unknown>';
+      }
+
       return `<span class="${valueToClass(param)}">${
-      	this.allowHtml ? value : escapeHtml(value)
+      	this.options.allowHtml ? value : escapeHtml(value)
       }</span>`;
     }).join(' ');
   }
