@@ -3,6 +3,7 @@ const placeholders = new Set([
 ]);
 
 const NEWLINE_REGEX = /\n/g;
+const COLLAPSED_CHAR = '…';
 
 const is = {
   nullish(value) {
@@ -24,7 +25,10 @@ const is = {
     return typeof value === 'function';
   },
   strictObject(value) {
-    return !this.nullish(value) && typeof value === 'object' && !Array.isArray(value);
+    return this.loseObject(value) && !Array.isArray(value);
+  },
+  loseObject(value) {
+    return !this.nullish(value) && typeof value === 'object'
   },
   array(value) {
     return Array.isArray(value);
@@ -40,23 +44,48 @@ const is = {
   },
   map(value) {
     return value instanceof Map;
+  },
+  function (value) {
+    return typeof value === 'function';
   }
 };
 
-function tryStringify(value, maxLen = 32) {
-  try {
-    const str = JSON.stringify(value, null, 2);
+function inspect(obj, visited = new WeakSet(), maxDepth = Infinity, curDepth = 0) {
+  // Return early if primitive, i.e.: 1, 'hello'
+  if (!is.loseObject(obj)) return formatValue(obj, true, visited, maxDepth, curDepth + 1);
 
-    const strippedStr = ((str.startsWith('{') && str.endsWith('}')) || (str.startsWith('[') && str.endsWith(']'))) ?
-      str.slice(1, -1).trim() :
-      str;
+  const isArray = is.array(obj);
 
-    const substr = strippedStr.length > maxLen ? strippedStr.substr(0, 32) + '...' : strippedStr;
+  let str = '';
 
-    return substr.replace(NEWLINE_REGEX, '');
-  } catch {
-    return '<circular>';
+  for (const key of Object.keys(obj)) {
+    const value = obj[key];
+
+    let result;
+    if (visited.has(value)) {
+      result = '[Circular]';
+    } else {
+      if (is.loseObject(value)) {
+        // Add to WeakSet to prevent infinite loops if value has
+        // circular structure
+        visited.add(value);
+      }
+
+      result = formatValue(value, true, visited, maxDepth, curDepth + 1);
+    }
+
+    if (str.length > 0) {
+      str += ', ';
+    }
+
+    if (!isArray) {
+      str += key + ': ' + result;
+    } else {
+      str += result;
+    }
   }
+
+  return !isArray ? `{ ${str} }` : `[ ${str} ]`;
 }
 
 function escapeHtml(value) {
@@ -94,7 +123,18 @@ function valueToClass(value) {
   else return 'ec-string';
 }
 
-function formatValue(value) {
+
+function formatValue(value, collapse, visited, maxDepth = Infinity, curDepth = 0) {
+  const self = (value) => formatValue(value, collapse, visited, maxDepth, curDepth + 1);
+
+  const valueConstructor = is.nullish(value) ? value : value.constructor;
+
+  if (curDepth >= maxDepth) {
+    if (is.nullish(value)) return String(value);
+    else return `[${valueConstructor.name}]`;
+  }
+
+  // TODO: strings do not have quotes in object literals because of this
   if (is.string(value))
     return value;
 
@@ -102,17 +142,34 @@ function formatValue(value) {
     return String(value);
 
   else if (is.set(value))
-    return `Set(${value.size}) {${tryStringify(Array.from(value.keys()))}}`;
+    return `Set(${value.size}) {${self(Array.from(value.keys()))}}`;
 
   else if (is.map(value))
     return `Map(${value.size}) {${Array.from(value.entries()).map(([k, v]) => 
-      `${k} => ${v}`).join(', ')}}`;
+      `${k} => ${self(v)}`).join(', ')}}`;
 
-  else if (is.strictObject(value))
-    return `${value?.constructor?.name ?? ''} { ${tryStringify(value)} }`;
+  else if (is.strictObject(value)) {
+    const result = inspect(value, visited, maxDepth, curDepth);
+    let prefix = '';
 
-  else if (is.array(value))
-    return `(${value.length}) [ ${tryStringify(value)} ]`;
+    // Chrome prefixes constructor name if prototype isn't object
+    if (valueConstructor && valueConstructor !== Object)
+      prefix = valueConstructor.name;
+    
+    return prefix + result;
+  }
+
+  else if (is.array(value)) {
+    // Chrome console only displays prefix (<count>)
+    // if array has two or more elements
+    if (value.length < 2) return inspect(value, visited, maxDepth, curDepth);
+    else return `(${value.length}) ${inspect(value, visited, maxDepth, curDepth)}`
+  } else if (is.function(value) && collapse) {
+    const name = value.name;
+
+    if (name) return `${name}()`;
+    else return `() => {${COLLAPSED_CHAR}}`;
+  }
 
   else return String(value);
 }
@@ -156,7 +213,7 @@ class EmbeddedConsole {
     return data.map((param) => {
       let value;
       try {
-        value = formatValue(param);
+        value = formatValue(param, false, undefined, this.options.maxDepth);
       } catch {
         // Don't do anything with error because it could throw another error
         // i.e. accessing `e.message` could invoke a throwing getter
