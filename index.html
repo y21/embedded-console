@@ -21,15 +21,14 @@
 
             // Create embedded console
             const ec = new EmbeddedConsole(element, {
-                height: '100%'
+                height: '100%',
+                maxDepth: 3
             });
 
             // Some random tests
             ec.time('Rendering logs');
 
-            ec.log('String', '<b>xss?</b>');
-            ec.log('Hello, %s. %d?', 'user');
-
+            ec.log('Hello, %d.', 5);
             ec.log(13, 15.6, BigInt(13));
             ec.log(undefined, null);
             ec.log(true, false);
@@ -42,14 +41,12 @@
 
             ec.log('Null prototype', Object.create(null));
             ec.log('Proxied Error', new Proxy(Error.prototype, {}));
-            ec.warn('Warning: please read me.', 123);
-            ec.error(new Error('help'));
-
-            ec.error(new Error('something went wrong').stack);
+            ec.warn('This is a warning', 123);
+            ec.error(new Error('This is an error').stack);
 
             ec.assert(true, 'All good');
 
-            ec.assert(0 /* 0 = falsy */, 'Oops!', 12345);
+            ec.assert(0 /* 0 = falsy */, 'Oops!', [1, 2, 3, /abcdefg/gi]);
 
             ec.error(new ReferenceError('abc is not defined'));
 

@@ -5,11 +5,24 @@
     color: white;
     padding: 5px;
     overflow-y: scroll;
+    cursor: default;
+}
+
+.ec-collapse-arrow {
+    color: #8d8d8d;
 }
 
 .ec-entry {
     margin-top: 3px;
     padding: 3px 20px;
+}
+
+.ec-hidden {
+    color: #a391a4;
+}
+
+.ec-function-signature {
+    color: #d0d6fb;
 }
 
 .ec-log {
@@ -40,7 +53,7 @@
     color: rgb(127, 127, 127);
 }
 
-.ec-object {
+.ec-function {
     font-style: italic;
 }
 
