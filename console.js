@@ -92,6 +92,12 @@ const EmbeddedConsole = (() => {
     return `<span class="${className}">${escaped}</span>`;
   }
 
+  function trimString(str, maxLen = 100) {
+    const len = Math.min(str.length, maxLen);
+
+    return str.substr(0, len) + (str.length > maxLen ? COLLAPSED_CHAR : '');
+  }
+
   function inspect(
     value,
     visited = new WeakSet(),
@@ -113,8 +119,7 @@ const EmbeddedConsole = (() => {
         // console.log('test') // console.log(['test'])
 
         // Chrome also cuts strings if they are too long
-        const trimmedString = value.substr(0, Math.min(value.length, 100));
-        return wrapInSpan(ClassNames.STRING_OBJECT, `"${trimmedString + (value.length > 100 ? '...' : '')}"`);
+        return wrapInSpan(ClassNames.STRING_OBJECT, `"${trimString(value)}"`);
       }
 
       return wrapInSpan(ClassNames.STRING, value);
@@ -181,7 +186,12 @@ const EmbeddedConsole = (() => {
     else if (is.function(value)) {
       const {name} = value;
 
-      if (name) return FUNCTION_SIGNATURE_PREFIX + wrapInSpan(ClassNames.FUNCTION, `${name}()`);
+      if (name) {
+        let val = String(value);
+        if (inObject) val = `${name}()`;
+
+        return FUNCTION_SIGNATURE_PREFIX + wrapInSpan(ClassNames.FUNCTION, trimString(val));
+      }
       else return wrapInSpan(ClassNames.FUNCTION, `() => ${COLLAPSED_CHAR}`);
     }
     
