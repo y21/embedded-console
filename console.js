@@ -29,7 +29,9 @@ const EmbeddedConsole = (() => {
 
     WARNING: 'ec-warning',
     LOG: 'ec-log',
-    ERROR: 'ec-error'
+    ERROR: 'ec-error',
+    ENTRY: 'ec-entry',
+    STACK: 'ec-stack'
   });
 
   // The reason for why we're storing references to native functions in here is because
@@ -44,12 +46,20 @@ const EmbeddedConsole = (() => {
     arrayMap: Array.prototype.map,
     arrayJoin: Array.prototype.join,
     arraySlice: Array.prototype.slice,
+    arrayFindIndex: Array.prototype.findIndex,
     objToString: Object.prototype.toString,
     String: String,
     mathMin: Math.min,
     substr: String.prototype.substr,
+    replace: String.prototype.replace,
+    stringIndexOf: String.prototype.indexOf,
+    stringLastIndexOf: String.prototype.lastIndexOf,
+    stringSplit: String.prototype.split,
+    stringIncludes: String.prototype.includes,
+    stringSlice: String.prototype.slice,
     WeakSet: WeakSet,
     WeakMap: WeakMap,
+    Error: Error,
     Map: Map,
     getOwnPropertyDescriptors: Object.getOwnPropertyDescriptors,
     getOwnPropertyNames: Object.getOwnPropertyNames,
@@ -65,6 +75,7 @@ const EmbeddedConsole = (() => {
     performanceNow: typeof performance !== 'undefined' ? performance.now.bind(performance) : Date.now // Fall back to Date.now()
   };
 
+  // Common HTML elements used in embedded-console
   const FUNCTION_SIGNATURE_PREFIX = wrapInSpan(ClassNames.FUNCTION_SIGNATURE, 'ƒ ', false);
   const COLLAPSED_ARROW = wrapInSpan(ClassNames.ARROW, COLLAPSED_ARROW_RAW, false);
   const EXPANDED_ARROW = wrapInSpan(ClassNames.ARROW, EXPANDED_ARROW_RAW, false);
@@ -90,6 +101,38 @@ const EmbeddedConsole = (() => {
     },
   };
 
+  // Attempts to return the context of this .log() call
+  // This is used to print the line number
+  function getContextLine(fn) {
+    try {
+      const Error = native.Error;
+
+      const stack = native.stringSplit.call(new Error().stack, '\n');
+
+      const lineIdx = native.arrayFindIndex.call(stack, (x) => native.stringIncludes.call(x, `${fn} (`));
+
+      const fnCtx = native.substr.call(stack[lineIdx + 1], 7); // 4 spaces + 'at'.length + 1 space = 7
+
+      const charIdx = native.stringIndexOf.call(fnCtx, '(');
+
+      const fullCtx = native.stringSlice.call(fnCtx, charIdx + 1, charIdx >= 0 ? -1 : fnCtx.length);
+
+      const lastPath = native.stringLastIndexOf.call(fullCtx, '/');
+
+      const shortenedCtx = lastPath >= 0 ? native.substr.call(fullCtx, lastPath + 1) : fullCtx;
+
+      return native.replace.call(
+        native.stringSlice.call(shortenedCtx, 0, native.stringLastIndexOf.call(shortenedCtx, ':')),
+        '<anonymous>',
+        'VM'
+      );
+    } catch(e) {
+      console.error('Failed to get stack', e);
+      return 'VM:1'; // Just default to VM:1 if an error occurred
+    }
+  }
+
+  // Escapes a string ("<b>" becomes "&lt;b&gt;") to prevent XSS
   function escapeHtml(value) {
     if (typeof value !== 'string') value = native.String(value);
 
@@ -118,18 +161,21 @@ const EmbeddedConsole = (() => {
     return result;
   }
 
+  // Helper function to escape HTML and wrap element in a span element
   function wrapInSpan(className, value, doEscape = true) {
     const escaped = doEscape ? escapeHtml(value) : value;
 
     return `<span class="${className}">${escaped}</span>`;
   }
 
+  // Ensures a string has a limited number of characters
   function trimString(str, maxLen = 100) {
     const len = native.mathMin(str.length, maxLen);
 
     return native.substr.call(str, 0, len) + (str.length > maxLen ? COLLAPSED_CHAR : '');
   }
 
+  // Inspects any JavaScript value and returns it as an HTML string
   function inspect(
     value,
     visited = new native.WeakSet(),
@@ -262,6 +308,9 @@ const EmbeddedConsole = (() => {
   // No need to use native.Set since it would make no difference (same scope, will be evaluated right after)
   const internalProperties = new Set(['length']);
 
+  // Inspect function specifically for objects and arrays
+  // Relies on recursion to get all properties and uses a WeakSet
+  // to prevent following cirular references
   function recursiveInspect(
     obj,
     visited = new native.WeakSet(),
@@ -334,6 +383,7 @@ const EmbeddedConsole = (() => {
     return !isArray ? `{${str}}` : `[${str}]`;
   }
 
+  // Main class
   class EmbeddedConsole {
     options = {};
     element = null;
@@ -377,10 +427,15 @@ const EmbeddedConsole = (() => {
       };
     }
 
-    _add(innerHTML, logLevel) {
+    _add(innerHTML, logLevel, fn) {
       const el = document.createElement('div');
-      el.classList.add('ec-entry', logLevel);
+      el.classList.add(ClassNames.ENTRY, logLevel);
       el.innerHTML = innerHTML;
+
+      const ctxEl = document.createElement('span');
+      ctxEl.classList.add(ClassNames.STACK);
+      ctxEl.innerText = getContextLine(fn);
+      el.appendChild(ctxEl);
 
       this.element.appendChild(el);
 
@@ -428,13 +483,13 @@ const EmbeddedConsole = (() => {
       return this.log(...data);
     }
     warn(...data) {
-      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.WARNING), data);
+      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.WARNING, 'warn'), data);
     }
     log(...data) {
-      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.LOG), data);
+      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.LOG, 'log'), data);
     }
     error(...data) {
-      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.ERROR), data);
+      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.ERROR, 'error'), data);
     }
     time(specifier = 'default') {
       native.mapSet.call(this.timers, specifier, native.performanceNow());
