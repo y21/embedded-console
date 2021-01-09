@@ -32,10 +32,42 @@ const EmbeddedConsole = (() => {
     ERROR: 'ec-error'
   });
 
+  // The reason for why we're storing references to native functions in here is because
+  // the user can override these functions and we would end up calling a modified function
+  // which could potentially return a bad string that contains HTML and we can't escape it
+  // This way we know that we're storing real native, unmodified functions/objects
+  // === vvvvvvvv ===
+  // TL;DR we want to make sure that if the user decides to overwrite natives after this code has run, this shouldn't be affected
+  const native = {
+    arrayFrom: Array.from,
+    isArray: Array.isArray,
+    arrayMap: Array.prototype.map,
+    arrayJoin: Array.prototype.join,
+    arraySlice: Array.prototype.slice,
+    objToString: Object.prototype.toString,
+    String: String,
+    mathMin: Math.min,
+    substr: String.prototype.substr,
+    WeakSet: WeakSet,
+    WeakMap: WeakMap,
+    Map: Map,
+    getOwnPropertyDescriptors: Object.getOwnPropertyDescriptors,
+    getOwnPropertyNames: Object.getOwnPropertyNames,
+    iterator: Array.prototype[Symbol.iterator],
+    setHas: Set.prototype.has,
+    setAdd: Set.prototype.add,
+    weakSetHas: WeakSet.prototype.has,
+    weakSetAdd: WeakSet.prototype.add,
+    weakMapSet: WeakMap.prototype.set, // TODO: check if it exists
+    mapSet: Map.prototype.set,
+    mapGet: Map.prototype.get,
+    mapDelete: Map.prototype.delete,
+    performanceNow: typeof performance !== 'undefined' ? performance.now.bind(performance) : Date.now // Fall back to Date.now()
+  };
+
   const FUNCTION_SIGNATURE_PREFIX = wrapInSpan(ClassNames.FUNCTION_SIGNATURE, 'ƒ ', false);
   const COLLAPSED_ARROW = wrapInSpan(ClassNames.ARROW, COLLAPSED_ARROW_RAW, false);
   const EXPANDED_ARROW = wrapInSpan(ClassNames.ARROW, EXPANDED_ARROW_RAW, false);
-
 
   // Helper functions for getting the type of a value
   const is = {
@@ -45,7 +77,7 @@ const EmbeddedConsole = (() => {
     string: (value) => typeof value === 'string',
     bigint: (value) => typeof value === 'bigint',
     function: (value) => typeof value === 'function',
-    array: (value) => Array.isArray(value),
+    array: (value) => native.isArray(value),
     error: (value) => value instanceof Error,
     regexp: (value) => value instanceof RegExp,
     set: (value) => value instanceof Set,
@@ -54,12 +86,12 @@ const EmbeddedConsole = (() => {
       return !this.nullish(value) && typeof value === 'object'
     },
     strictObject(value) {
-      return this.loseObject(value) && !Array.isArray(value)
+      return this.loseObject(value) && !native.isArray(value)
     },
   };
 
   function escapeHtml(value) {
-    if (typeof value !== 'string') value = String(value);
+    if (typeof value !== 'string') value = native.String(value);
 
     let result = '';
     for (let i = 0; i < value.length; ++i) {
@@ -93,14 +125,14 @@ const EmbeddedConsole = (() => {
   }
 
   function trimString(str, maxLen = 100) {
-    const len = Math.min(str.length, maxLen);
+    const len = native.mathMin(str.length, maxLen);
 
-    return str.substr(0, len) + (str.length > maxLen ? COLLAPSED_CHAR : '');
+    return native.substr.call(str, 0, len) + (str.length > maxLen ? COLLAPSED_CHAR : '');
   }
 
   function inspect(
     value,
-    visited = new WeakSet(),
+    visited = new native.WeakSet(),
     inObject = false,
     collapsed = true
   ) {
@@ -108,7 +140,7 @@ const EmbeddedConsole = (() => {
     const selfRecursive = (value) => {
       visited.add(value);
       return recursiveInspect(value, visited, inObject, collapsed);
-    }
+    };
     const ARROW = collapsed ? COLLAPSED_ARROW : EXPANDED_ARROW;
 
     if (is.string(value)) {
@@ -141,10 +173,19 @@ const EmbeddedConsole = (() => {
     }
     
     else if (is.set(value)) {
-      const prefix = `Set(${value.size})`;
-      const inspected = Array.from(value.keys())
-        .map((k) => self(k, true))
-        .join(', ');
+      // It's possible that the given object with a Set prototype has a `size` property being an HTML string
+      // So we need to escape/inspect it as it could lead to XSS
+      // Example: `.log({ __proto__: Map.prototype, size: '<b>a</b>', entries: () => [] })` would interpret size value as an HTML string
+      const prefix = `Set(${self(value.size, true)})`;
+
+      // Yeah it's ugly, but we can't use Array.from/Array.prototype.map/...
+      const inspected = native.arrayJoin.call(
+        native.arrayMap.call(
+          native.arrayFrom(value.keys()),
+          (k) => self(k, false)
+        ),
+        ', '
+      );
 
       const fmt = `${prefix} {${inspected}}`;
 
@@ -152,10 +193,16 @@ const EmbeddedConsole = (() => {
     }
     
     else if (is.map(value)) {
-      const prefix = `Map(${value.size})`;
-      const inspected = Array.from(value.entries())
-        .map(([k, v]) => `${self(k, true)} => ${self(v, true)}`)
-        .join(', ');
+      // See above why we're inspecting the size property
+      const prefix = `Map(${self(value.size, true)})`;
+
+      const inspected = native.arrayJoin.call(
+        native.arrayMap.call(
+          native.arrayFrom(value.entries()),
+          ([k, v]) => `${self(k, true)} => ${self(v, true)}`
+        ),
+        ', '
+      );
 
       const fmt = `${prefix} {${inspected}}`;
 
@@ -167,7 +214,8 @@ const EmbeddedConsole = (() => {
       let prefix = `${ARROW} `;
 
       const valueConstructor = value.constructor;
-      if (valueConstructor && valueConstructor !== Object) prefix += `${valueConstructor.name} `;
+      // Constructor name could be HTML, so we need to escape this, too
+      if (valueConstructor && valueConstructor !== Object) prefix += `${self(valueConstructor.name)} `;
 
       // We can't escape HTML here since that would break formatting for nested elements
       // Individual key/values are already escaped
@@ -178,7 +226,7 @@ const EmbeddedConsole = (() => {
       const result = selfRecursive(value);
       let prefix = `${ARROW} `;
       
-      if (value.length >= 2) prefix += `(${value.length}) `;
+      if (value.length >= 2) prefix += `(${self(value.length, true)}) `;
 
       return wrapInSpan(ClassNames.OBJECT, prefix + result, false);
     }
@@ -187,7 +235,8 @@ const EmbeddedConsole = (() => {
       const {name} = value;
 
       if (name) {
-        let val = String(value);
+        // AFAIK, you can't set Function.prototype.name to a string that could be HTML, so we don't need to escape anything here
+        let val = native.String(value);
         if (inObject) val = `${name}()`;
 
         return FUNCTION_SIGNATURE_PREFIX + wrapInSpan(ClassNames.FUNCTION, trimString(val));
@@ -210,11 +259,12 @@ const EmbeddedConsole = (() => {
   }
 
   // "Internal properties" are properties that will be interpreted as object keys, regardless if the value is an array or object
+  // No need to use native.Set since it would make no difference (same scope, will be evaluated right after)
   const internalProperties = new Set(['length']);
 
   function recursiveInspect(
     obj,
-    visited = new WeakSet(),
+    visited = new native.WeakSet(),
     inObject,
     collapsed
   ) {
@@ -224,12 +274,12 @@ const EmbeddedConsole = (() => {
 
     let str = '';
 
-    const descriptors = Object.getOwnPropertyDescriptors(obj);
-    const keys = Object.getOwnPropertyNames(obj);
+    const descriptors = native.getOwnPropertyDescriptors(obj);
+    const keys = native.getOwnPropertyNames(obj);
 
     let count = 0;
 
-    for (const key of keys) {
+    for (const key of native.iterator.call(keys)) {
       count++;
 
       // Chrome only displays up to 5 properties in collapsed view
@@ -249,11 +299,11 @@ const EmbeddedConsole = (() => {
         // We know it's not a getter so we can safely read its value
         const value = obj[key];
 
-        if (visited.has(value)) {
+        if (native.weakSetHas.call(visited, value)) {
           result = '[Circular]';
         } else {
           if (is.loseObject(value)) {
-            visited.add(value);
+            native.weakSetAdd.call(visited, value);
           }
   
           result = inspect(value, visited, true, collapsed);
@@ -265,7 +315,7 @@ const EmbeddedConsole = (() => {
       // If the object/array is expanded, we want to make the output a bit cleaner by adding linebreaks after each property
       if (!collapsed) str += '<br />';
 
-      const hasInternalProperty = internalProperties.has(key);
+      const hasInternalProperty = native.setHas.call(internalProperties, key);
       if (!isArray || hasInternalProperty) {
         let escapedKey = escapeHtml(key);
         if (hasInternalProperty) escapedKey = `[${escapedKey}]`;
@@ -287,8 +337,8 @@ const EmbeddedConsole = (() => {
   class EmbeddedConsole {
     options = {};
     element = null;
-    logs = new WeakMap();
-    timers = new Map();
+    logs = new native.WeakMap();
+    timers = new native.Map();
 
     constructor(element, options = {}) {
       this.element = element;
@@ -316,7 +366,7 @@ const EmbeddedConsole = (() => {
         if (!data) return;
         
         // We only care about expandable items (arrays/objects)
-        const child = Array.from(element.children).find((el) => el.classList.contains(ClassNames.OBJECT));
+        const child = native.arrayFrom(element.children).find((el) => el.classList.contains(ClassNames.OBJECT));
         if (!child) return;
 
         // Hacky way to check if element is collapsed
@@ -338,27 +388,30 @@ const EmbeddedConsole = (() => {
     }
 
     _formatString(collapsed, ...data) {
-      const [initial] = data;
+      // Array destructoring calls Array.prototype[Symbol.iterator]
+      const [initial] = native.iterator.call(data);
+
       if (typeof initial === 'string') {
         let idx = 0,
           res = '';
 
         for (let i = 0; i < initial.length; ++i) {
           const char = initial[i];
-          if (placeholders.has(char) && initial[i - 1] === '%') res += data[++idx] || `%${char}`;
+          if (native.setHas.call(placeholders, char) && initial[i - 1] === '%') res += data[++idx] || `%${char}`;
           else if (char === '%') continue;
           else res += char;
         }
 
         data[0] = res;
-        data.splice(1, idx);
+        native.arraySlice.call(data, 1, idx);
       }
 
-      return data.map((param) => {
+      return native.arrayJoin.call(native.arrayMap.call(data, (param) => {
         let value;
         try {
           value = inspect(param, undefined, false, collapsed);
         } catch(e) {
+          console.log(e);
           // Don't do anything with error because it could throw another error
           // i.e. accessing `e.message` could invoke a throwing getter
 
@@ -368,31 +421,30 @@ const EmbeddedConsole = (() => {
         }
 
         return value;
-
-      }).join(' ');
+      }), ' ');
     }
 
     info(...data) {
       return this.log(...data);
     }
     warn(...data) {
-      this.logs.set(this._add(this._formatString(true, ...data), ClassNames.WARNING), data);
+      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.WARNING), data);
     }
     log(...data) {
-      this.logs.set(this._add(this._formatString(true, ...data), ClassNames.LOG), data);
+      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.LOG), data);
     }
     error(...data) {
-      this.logs.set(this._add(this._formatString(true, ...data), ClassNames.ERROR), data);
+      native.weakMapSet.call(this.logs, this._add(this._formatString(true, ...data), ClassNames.ERROR), data);
     }
     time(specifier = 'default') {
-      this.timers.set(specifier, performance.now());
+      native.mapSet.call(this.timers, specifier, native.performanceNow());
     }
     timeEnd(specifier = 'default') {
-      const p = this.timers.get(specifier);
+      const p = native.mapGet.call(this.timers, specifier);
       if (p === undefined) return this.warn(`Timer ${specifier} does not exist`);
-      this.log(`${specifier}:`, `${performance.now() - p}ms`);
+      this.log(`${specifier}:`, `${native.performanceNow() - p}ms`);
 
-      this.timers.delete(specifier);
+      native.mapDelete.call(this.timers, specifier);
     }
     assert(condition, ...data) {
       // console.assert checks if condition is falsy
