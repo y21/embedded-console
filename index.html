@@ -57,6 +57,21 @@
             ec.log(NaN);
             ec.log(9.5e95);
 
+            // Testing HTML injection
+
+            ec.log({ '<b>b</b>': 1 });
+            ec.log({ __proto__: Set.prototype, size: '<b>b</b>', keys: () => [ 1, 2 ] });
+
+            // Testing whether overwriting used native functions affects library
+
+            function trap() {
+                alert('Uh oh, this shouldn\'t ever happen. If you\'re see this, open an issue on the repo.');
+            }
+
+            Array.prototype.map = Array.prototype.join = Object.getOwnPropertyNames = window.String = performance.now = trap;
+            ec.log([1, 2, 3, 4], { a: 3 }, new Set([ 1, 2, 3 ]));
+            ec.log({ toString: trap });
+
             ec.timeEnd('Rendering logs');
     </script>
 </html>
