@@ -93,6 +93,11 @@ const EmbeddedConsole = (() => {
     regexp: (value) => value instanceof RegExp,
     set: (value) => value instanceof Set,
     map: (value) => value instanceof Map,
+    weakset: (value) => value instanceof WeakSet,
+    weakmap: (value) => value instanceof WeakMap,
+    weak(value) {
+      return this.weakset(value) || this.weakmap(value);
+    },
     loseObject(value) {
       return !this.nullish(value) && typeof value === 'object'
     },
@@ -256,7 +261,18 @@ const EmbeddedConsole = (() => {
     }
     
     else if (is.strictObject(value)) {
-      const result = selfRecursive(value);
+
+      let result;
+      if (is.weak(value)) {
+        // `WeakSet`s and `WeakMap`s are special cases, since we can't inspect them
+        // All elements are weak references, meaning we can't access them
+        // If we were able to, GC wouldn't be able to ever free them
+        // The following isn't what Chrome does, but it replicates node inspect
+        result = escapeHtml('{ <items unknown> }');
+      } else {
+        result = selfRecursive(value);
+      }
+
       let prefix = `${ARROW} `;
 
       const valueConstructor = value.constructor;
@@ -517,3 +533,7 @@ const EmbeddedConsole = (() => {
 
   return EmbeddedConsole;
 })();
+// TODO: sort properties like chrome does
+// TODO2: repl/readonly
+// TODO4: fix spaces
+// TODO5: instead of overwriting on click, append to it with linebreak
