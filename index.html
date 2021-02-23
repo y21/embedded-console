@@ -67,10 +67,16 @@
             function trap() {
                 alert('Uh oh, this shouldn\'t ever happen. If you\'re see this, open an issue on the repo.');
             }
+        
+            // Overwrite native functions to see if it affects them
+            const real = [Array.prototype.map, Array.prototype.join, Object.getOwnPropertyNames, window.String, performance.now];
+        
+            for (const {name} of real) Array.prototype[name] = trap;
 
-            Array.prototype.map = Array.prototype.join = Object.getOwnPropertyNames = window.String = performance.now = trap;
             ec.log([1, 2, 3, 4], { a: 3 }, new Set([ 1, 2, 3 ]));
             ec.log({ toString: trap });
+        
+            for (const fn of real) Array.prototype[fn.name] = fn;
 
             ec.timeEnd('Rendering logs');
     </script>
